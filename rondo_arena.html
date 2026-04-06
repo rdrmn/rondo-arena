@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>Arena</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;700;900&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:#050d07;
+  user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;}
+
+/* Screens */
+.scr{display:none;width:100%;height:100%;position:absolute;top:0;left:0;}
+.scr.on{display:block;}
+
+/* MENU */
+#menu{display:none;flex-direction:column;align-items:center;
+  justify-content:center;padding:5vw;overflow-y:auto;background:#050d07;}
+#menu.on{display:flex;}
+.logo{font-family:"Bebas Neue",sans-serif;font-size:14vw;letter-spacing:3vw;line-height:1.1;
+  background:linear-gradient(135deg,#4dd97a,#60b8ff);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.logo-sub{font-size:2.8vw;letter-spacing:2vw;color:#334;margin-bottom:6vw;text-transform:uppercase;}
+.rules-box{width:100%;max-width:440px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.07);border-radius:3vw;padding:4vw;margin-bottom:5vw;}
+.rule-row{display:flex;align-items:flex-start;gap:3vw;margin-bottom:3vw;}
+.rule-row:last-child{margin-bottom:0;}
+.rule-icon{font-size:5vw;width:7vw;text-align:center;flex-shrink:0;margin-top:.5vw;}
+.rule-text{font-size:3vw;color:#aaa;line-height:1.6;}
+.start-btn{width:100%;max-width:440px;padding:4vw;border-radius:3vw;
+  background:linear-gradient(135deg,#1a6a2a,#0a4a5a);color:#4dd97a;
+  font-weight:900;font-size:5vw;letter-spacing:2vw;border:none;cursor:pointer;text-transform:uppercase;}
+
+/* GAME — only a canvas */
+#game canvas{display:block;touch-action:none;position:absolute;top:0;left:0;}
+
+/* RESULT */
+#result{display:none;flex-direction:column;align-items:center;
+  justify-content:center;gap:4vw;background:#050d07;}
+#result.on{display:flex;}
+.res-icon{font-size:16vw;}
+.res-title{font-family:"Bebas Neue",sans-serif;font-size:15vw;letter-spacing:3vw;color:#eee;}
+.res-sub{font-size:3.5vw;letter-spacing:2vw;color:#555;}
+.res-btns{display:flex;gap:3vw;margin-top:2vw;}
+.rbtn{padding:3.5vw 6vw;border-radius:2.5vw;font-weight:700;font-size:3.5vw;
+  letter-spacing:1.5vw;cursor:pointer;border:none;flex:1;}
+.rbtn-play{background:#1a6a2a;color:#4dd97a;}
+.rbtn-menu{background:rgba(255,255,255,.06);color:#666;border:1px solid rgba(255,255,255,.1);}
+</style>
+</head>
+<body>
+
+<!-- MENU -->
+<div class="scr on" id="menu">
+  <div class="logo">ARENA</div>
+  <div class="logo-sub">4 Kale · Son Kalan Kazanır</div>
+  <div class="rules-box">
+    <div class="rule-row">
+      <div class="rule-icon">👆</div>
+      <div class="rule-text"><strong style="color:#eee">Ekrana dokun</strong> — joystick orada belirir. Sürükle → hareket.</div>
+    </div>
+    <div class="rule-row">
+      <div class="rule-icon">⚽</div>
+      <div class="rule-text">Top değince yapışır. Joystick yönü göster → bırak → <strong style="color:#eee">şut</strong>.</div>
+    </div>
+    <div class="rule-row">
+      <div class="rule-icon">❤️</div>
+      <div class="rule-text">3 can. Kaleye gol yenince 1 düşer. <strong style="color:#eee">Son kalan kazanır.</strong></div>
+    </div>
+  </div>
+  <button class="start-btn" onclick="startGame()">BAŞLA</button>
+</div>
+
+<!-- GAME — bare canvas -->
+<div class="scr" id="game">
+  <canvas id="c"></canvas>
+</div>
+
+<!-- RESULT -->
+<div class="scr" id="result">
+  <div class="res-icon" id="resIcon">🏆</div>
+  <div class="res-title" id="resTitle">KAZANDIN!</div>
+  <div class="res-sub" id="resSub"></div>
+  <div class="res-btns">
+    <button class="rbtn rbtn-play" onclick="startGame()">↺ Tekrar</button>
+    <button class="rbtn rbtn-menu" onclick="goMenu()">← Menü</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════
+// SETUP
+// ══════════════════════════════════════
+const C   = document.getElementById('c');
+const ctx = C.getContext('2d');
+
+const VW = window.innerWidth  || document.documentElement.clientWidth;
+const VH = window.innerHeight || document.documentElement.clientHeight;
+
+C.width  = VW;
+C.height = VH;
+C.style.width  = VW + 'px';
+C.style.height = VH + 'px';
+
+// Arena square = full screen
+const SZ  = Math.min(VW, VH);
+const AOX = (VW - SZ) / 2;
+const AOY = (VH - SZ) / 2;
+const CX  = VW / 2;
+const CY  = VH / 2;
+
+// ── Constants (all SZ-relative)
+const WALL      = SZ * 0.025;
+const ARENA     = SZ - WALL*2;
+const AX        = AOX + WALL;
+const AY        = AOY + WALL;
+const AW        = ARENA;
+const AH        = ARENA;
+
+const PLAYER_R  = SZ * 0.055;
+const BALL_R    = SZ * 0.022;
+const HALO_R    = PLAYER_R * 1.35;
+const CATCH_R   = PLAYER_R + BALL_R + SZ*0.008;
+const BALL_OFF  = PLAYER_R + BALL_R + 2;
+const GOAL_W    = SZ * 0.13;
+const GOAL_D    = SZ * 0.018;
+const CENTER_R  = SZ * 0.12;
+const BASE_SPD  = SZ * 0.0048;
+const HUMAN_SPD = SZ * 0.013;
+
+const HUD_H     = SZ * 0.06;   // HUD strip height (canvas drawn)
+const FONT_HUD  = Math.round(SZ * 0.028);
+const FONT_NAME = Math.round(PLAYER_R * 0.7);
+
+const COLORS = ['#ff4444','#ffcc00','#cc66ff','#4dd97a'];
+const NAMES  = ['AI1','AI2','AI3','SEN'];
+
+// ── Dynamic joystick (no HTML element)
+let js = null;
+// js = { cx, cy, dx, dy, dist, angle, active }
+
+// ══════════════════════════════════════
+// SCREEN NAV
+// ══════════════════════════════════════
+function show(id){
+  document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+}
+function goMenu(){
+  gameOver=true;
+  if(animId){ cancelAnimationFrame(animId); animId=null; }
+  show('menu');
+}
+
+// ══════════════════════════════════════
+// GOAL / ARENA GEOMETRY
+// ══════════════════════════════════════
+function goalGap(side){
+  const hw=GOAL_W/2;
+  if(side===0||side===2) return {min:CY-hw, max:CY+hw, axis:'y'};
+  return {min:CX-hw, max:CX+hw, axis:'x'};
+}
+function goalRect(side){
+  const hw=GOAL_W/2, gd=GOAL_D;
+  if(side===0) return {x:AOX,       y:CY-hw,    w:WALL+gd, h:GOAL_W, wall:'left'};
+  if(side===1) return {x:CX-hw,     y:AOY,      w:GOAL_W,  h:WALL+gd, wall:'top'};
+  if(side===2) return {x:AX+AW-gd,  y:CY-hw,    w:WALL+gd, h:GOAL_W, wall:'right'};
+  return             {x:CX-hw,     y:AY+AH-gd,  w:GOAL_W,  h:WALL+gd, wall:'bottom'};
+}
+function goaliePos(side){
+  const off=PLAYER_R*2.5;
+  if(side===0) return {x:AX+off,      y:CY};
+  if(side===1) return {x:CX,          y:AY+off};
+  if(side===2) return {x:AX+AW-off,   y:CY};
+  return             {x:CX,          y:AY+AH-off};
+}
+
+// ══════════════════════════════════════
+// GAME STATE
+// ══════════════════════════════════════
+let ball, players, gameOver, animId;
+let humanHasBall=false, humanAimAngle=0, shotCooldown=0;
+let effects=[];
+let _msgText='', _msgColor='#fff', _msgTimer=null;
+
+function initBall(){
+  const a=Math.random()*Math.PI*2;
+  return {x:CX,y:CY,vx:Math.cos(a)*BASE_SPD*1.1,vy:Math.sin(a)*BASE_SPD*1.1,trail:[],bounces:0,passType:'free'};
+}
+function initPlayers(){
+  return COLORS.map((col,i)=>({
+    id:i,color:col,name:NAMES[i],
+    lives:3,alive:true,
+    x:goaliePos(i).x,y:goaliePos(i).y,
+    tx:goaliePos(i).x,ty:goaliePos(i).y,
+    hasBall:false,aimTimer:0,aimTarget:null,aimAngle:0,
+    reactTimer:0,reacted:false
+  }));
+}
+
+function startGame(){
+  show('game');
+  ball=initBall();
+  players=initPlayers();
+  gameOver=false;
+  humanHasBall=false; humanAimAngle=0; shotCooldown=0;
+  humanShotHistory=[];
+  effects=[];
+  js=null;
+  if(animId){ cancelAnimationFrame(animId); animId=null; }
+  animId=requestAnimationFrame(loop);
+}
+
+// ══════════════════════════════════════
+// INPUT — dynamic joystick
+// ══════════════════════════════════════
+const DEAD = SZ * 0.004; // çok küçük dead zone — neredeyse anında tepki
+
+function touchStart(cx,cy){
+  if(gameOver) return;
+  js={cx,cy,dx:0,dy:0,dist:0,angle:0,active:true};
+}
+function touchMove(cx,cy){
+  if(!js||!js.active) return;
+  const dx=cx-js.cx, dy=cy-js.cy;
+  const raw=Math.sqrt(dx*dx+dy*dy);
+  if(raw<DEAD){ js.dist=0; js.dx=0; js.dy=0; return; }
+  js.angle=Math.atan2(dy,dx);
+  // Yarıçap küçük → küçük hareket anında max hıza yaklaşır
+  const JS_R = SZ*0.065;
+  js.dist=Math.min(raw/JS_R,1);
+  // Kare kök eğrisi: hafif harekette daha hızlı yanıt
+  const curve = Math.pow(js.dist, 0.7);
+  js.dx=Math.cos(js.angle)*curve;
+  js.dy=Math.sin(js.angle)*curve;
+  if(humanHasBall && js.dist>0.04) humanAimAngle=js.angle;
+}
+function touchEnd(){
+  if(!js) return;
+  if(humanHasBall){
+    const h=players[3];
+    const power = js.dist>0.05 ? BASE_SPD*(2.0+js.dist*1.8) : BASE_SPD*0.9;
+    ball.x=h.x+Math.cos(humanAimAngle)*BALL_OFF*2;
+    ball.y=h.y+Math.sin(humanAimAngle)*BALL_OFF*2;
+    ball.vx=Math.cos(humanAimAngle)*power;
+    ball.vy=Math.sin(humanAimAngle)*power;
+    ball.trail=[]; ball.bounces=0;
+    humanHasBall=false;
+    shotCooldown=25;
+    // AI3 için açı kaydı
+    humanShotHistory.push(humanAimAngle);
+    if(humanShotHistory.length>8) humanShotHistory.shift();
+    spawnHit(ball.x,ball.y,COLORS[3]);
+    if(power>BASE_SPD*1.5) showMsg('ŞUT!','#4dd97a',700);
+  }
+  js=null;
+}
+
+// Touch events on canvas
+C.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  const t=e.changedTouches[0];
+  touchStart(t.clientX,t.clientY);
+},{passive:false});
+C.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  const t=e.changedTouches[0];
+  touchMove(t.clientX,t.clientY);
+},{passive:false});
+C.addEventListener('touchend',e=>{ e.preventDefault(); touchEnd(); },{passive:false});
+C.addEventListener('mousedown',e=>touchStart(e.clientX,e.clientY));
+window.addEventListener('mousemove',e=>{ if(js&&js.active) touchMove(e.clientX,e.clientY); });
+window.addEventListener('mouseup',()=>touchEnd());
+
+// ══════════════════════════════════════
+// EFFECTS
+// ══════════════════════════════════════
+function spawnHit(x,y,col){ effects.push({x,y,col,age:0,maxAge:18,r:BALL_R}); }
+function updateEffects(){ effects=effects.filter(e=>e.age<e.maxAge); effects.forEach(e=>e.age++); }
+
+// ══════════════════════════════════════
+// MESSAGE
+// ══════════════════════════════════════
+function showMsg(t,c,dur){
+  _msgText=t; _msgColor=c;
+  clearTimeout(_msgTimer);
+  if(dur>0) _msgTimer=setTimeout(()=>{ _msgText=''; },dur);
+}
+
+// ══════════════════════════════════════
+// HUD (drawn on canvas)
+// ══════════════════════════════════════
+function drawHUD(){
+  // Top gradient
+  const gt=ctx.createLinearGradient(0,AOY,0,AOY+HUD_H*2);
+  gt.addColorStop(0,'rgba(0,0,0,.65)'); gt.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=gt; ctx.fillRect(0,0,VW,AOY+HUD_H*2);
+  // Bottom gradient
+  const gb=ctx.createLinearGradient(0,AOY+SZ-HUD_H*2,0,AOY+SZ);
+  gb.addColorStop(0,'rgba(0,0,0,0)'); gb.addColorStop(1,'rgba(0,0,0,.5)');
+  ctx.fillStyle=gb; ctx.fillRect(0,AOY+SZ-HUD_H*2,VW,HUD_H*2+AOY);
+
+  ctx.font=`700 ${FONT_HUD}px Inter,Arial`;
+  ctx.textBaseline='middle';
+  const ty=AOY+HUD_H*0.65, by=AOY+SZ-HUD_H*0.65;
+
+  // AI1 top-left, AI2 top-right
+  ctx.textAlign='left';
+  ctx.fillStyle=COLORS[0]; ctx.fillText('◀ AI1',AX,ty);
+  const ai1lives=livesStr(players[0].lives);
+  ctx.fillStyle='#eee'; ctx.fillText(ai1lives,AX+FONT_HUD*3.2,ty);
+
+  ctx.textAlign='right';
+  ctx.fillStyle=COLORS[1]; ctx.fillText('AI2 ▶',AX+AW,ty);
+  ctx.textAlign='left';
+  const ai2lives=livesStr(players[1].lives);
+  ctx.fillStyle='#eee'; ctx.fillText(ai2lives,AX+AW-FONT_HUD*3.2,ty);
+
+  // SEN bottom-left, AI3 bottom-right
+  ctx.textAlign='left';
+  ctx.fillStyle=COLORS[3]; ctx.fillText('SEN',AX,by);
+  ctx.fillStyle='#eee'; ctx.fillText(livesStr(players[3].lives),AX+FONT_HUD*2.2,by);
+
+  ctx.textAlign='right';
+  ctx.fillStyle=COLORS[2]; ctx.fillText('AI3',AX+AW,by);
+  ctx.textAlign='left';
+  ctx.fillStyle='#eee'; ctx.fillText(livesStr(players[2].lives),AX+AW-FONT_HUD*2.8,by);
+
+  ctx.textBaseline='alphabetic';
+
+  // Center message
+  if(_msgText){
+    ctx.font=`900 ${Math.round(SZ*0.08)}px "Bebas Neue",Arial`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle=_msgColor;
+    ctx.fillText(_msgText,CX,CY);
+    ctx.textBaseline='alphabetic';
+  }
+}
+function livesStr(n){ return n>0?'❤'.repeat(n):'💀'; }
+
+// ══════════════════════════════════════
+// DYNAMIC JOYSTICK DRAW
+// ══════════════════════════════════════
+function drawJoystick(){
+  if(!js||!js.active) return;
+  const R=SZ*0.065; // JS_R ile aynı
+  ctx.beginPath(); ctx.arc(js.cx,js.cy,R,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,0,0,.3)'; ctx.fill();
+  ctx.strokeStyle='rgba(77,217,122,.25)'; ctx.lineWidth=1.5; ctx.stroke();
+  const kx=js.cx+js.dx*R, ky=js.cy+js.dy*R;
+  ctx.beginPath(); ctx.arc(kx,ky,R*0.4,0,Math.PI*2);
+  ctx.fillStyle='rgba(77,217,122,.5)'; ctx.fill();
+  ctx.strokeStyle='rgba(77,217,122,.85)'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(js.cx,js.cy,3,0,Math.PI*2);
+  ctx.fillStyle='rgba(77,217,122,.35)'; ctx.fill();
+}
+
+// ══════════════════════════════════════
+// ══════════════════════════════════════
+// AI KİŞİLİKLERİ
+// 0 = AI1 — Agresif: sürekli topa koşar, erken şut atar, risk alır
+// 1 = AI2 — Pasif: kalesini bekler, güvenli oynar, geç şut atar
+// 2 = AI3 — Akıllı: örüntü okur, önceden pozisyon alır, en tehlikeli kaleyi hedefler
+// ══════════════════════════════════════
+
+// AI3 için pattern memory: oyuncunun şut açısı geçmişi
+let humanShotHistory = []; // son açılar
+
+function bestTargetForBot(botIdx, p){
+  if(botIdx===2){
+    // Akıllı: en az canlı olan kaleyi hedefle (en kolay gol)
+    let minLives=4, best=3;
+    for(let j=0;j<players.length;j++){
+      if(j===botIdx||!players[j].alive) continue;
+      if(players[j].lives<minLives){ minLives=players[j].lives; best=j; }
+    }
+    return best;
+  }
+  if(botIdx===0){
+    // Agresif: her zaman insan kalesini hedefle
+    if(players[3].alive) return 3;
+    const alive=[0,1,2].filter(j=>j!==0&&players[j].alive);
+    return alive[0]??-1;
+  }
+  // Pasif: en yakın kaleyi seç (güvenli şut)
+  let minDist=Infinity, best=-1;
+  for(let j=0;j<players.length;j++){
+    if(j===botIdx||!players[j].alive) continue;
+    const tg=goalRect(j);
+    const d=Math.sqrt((tg.x+tg.w/2-p.x)**2+(tg.y+tg.h/2-p.y)**2);
+    if(d<minDist){ minDist=d; best=j; }
+  }
+  return best;
+}
+
+function aimAngleForBot(botIdx, p, targetIdx){
+  const tg=goalRect(targetIdx);
+  const tx=tg.x+tg.w/2, ty=tg.y+tg.h/2;
+  let angle=Math.atan2(ty-p.y, tx-p.x);
+
+  if(botIdx===2&&humanShotHistory.length>3){
+    // Akıllı: sapma eklemez, tam hedefler
+    angle+=(Math.random()-0.5)*0.1;
+  } else if(botIdx===0){
+    // Agresif: hafif sapma (çok atak, biraz aceleci)
+    angle+=(Math.random()-0.5)*0.35;
+  } else {
+    // Pasif: küçük sapma
+    angle+=(Math.random()-0.5)*0.2;
+  }
+  return angle;
+}
+
+function holdFramesForBot(botIdx){
+  if(botIdx===0) return 16; // Agresif: çabuk atar
+  if(botIdx===1) return 38; // Pasif: uzun bekler
+  return 24;                // Akıllı: orta
+}
+
+function threatZoneForBot(botIdx){
+  if(botIdx===0) return SZ*0.75; // Agresif: geniş tehdit algısı
+  if(botIdx===1) return SZ*0.40; // Pasif: sadece çok yakın gelince tepki
+  return SZ*0.60;                // Akıllı: orta
+}
+
+function moveSpeedForBot(botIdx){
+  if(botIdx===0) return SZ*0.0068; // Agresif: hızlı
+  if(botIdx===1) return SZ*0.0042; // Pasif: yavaş
+  return SZ*0.0058;                // Akıllı: orta
+}
+
+function idlePositionForBot(botIdx, p, gx, gy){
+  const home=goaliePos(botIdx);
+  const wob=Math.sin(Date.now()*0.001+botIdx*2)*SZ*0.04;
+
+  if(botIdx===0){
+    // Agresif: orta sahaya yakın, topa doğru
+    const midX=(home.x+CX)/2, midY=(home.y+CY)/2;
+    return {tx:midX+(Math.random()-.5)*SZ*0.08, ty:midY+(Math.random()-.5)*SZ*0.08};
+  }
+  if(botIdx===1){
+    // Pasif: kale önünde sıkı dur
+    return {
+      tx:(botIdx===0||botIdx===2)?home.x:home.x+wob,
+      ty:(botIdx===0||botIdx===2)?home.y+wob:home.y
+    };
+  }
+  // Akıllı: insan şut geçmişine göre önceden pozisyon al
+  if(humanShotHistory.length>2){
+    const avgAngle=humanShotHistory.reduce((a,b)=>a+b,0)/humanShotHistory.length;
+    // Tahmin edilen top yolunun ortasına git
+    const predX=CX+Math.cos(avgAngle)*SZ*0.25;
+    const predY=CY+Math.sin(avgAngle)*SZ*0.25;
+    return {
+      tx:Math.max(AX+PLAYER_R,Math.min(AX+AW-PLAYER_R,predX)),
+      ty:Math.max(AY+PLAYER_R,Math.min(AY+AH-PLAYER_R,predY))
+    };
+  }
+  return {tx:home.x+wob, ty:home.y};
+}
+
+function updateAI(){
+  players.forEach((p,i)=>{
+    if(!p.alive||i===3) return;
+    const gr=goalRect(i);
+    const gx=gr.x+gr.w/2, gy=gr.y+gr.h/2;
+    const spd=moveSpeedForBot(i);
+    const holdF=holdFramesForBot(i);
+
+    if(p.hasBall){
+      ball.x=p.x; ball.y=p.y; ball.trail=[];
+      p.aimTimer=(p.aimTimer||0)+1;
+
+      if(p.aimTarget===null||p.aimTarget===undefined){
+        const bIdx=bestTargetForBot(i,p);
+        p.aimTarget=bIdx>=0?bIdx:null;
+        if(bIdx>=0){
+          p.aimAngle=aimAngleForBot(i,p,bIdx);
+        } else {
+          p.aimAngle=Math.random()*Math.PI*2;
+        }
+      }
+
+      if(p.aimTimer>=holdF){
+        const pow=BASE_SPD*(1.6+Math.random()*0.4);
+        ball.x=p.x+Math.cos(p.aimAngle)*BALL_OFF*2;
+        ball.y=p.y+Math.sin(p.aimAngle)*BALL_OFF*2;
+        ball.vx=Math.cos(p.aimAngle)*pow;
+        ball.vy=Math.sin(p.aimAngle)*pow;
+        ball.bounces=0;
+        normalizeSpeed(BASE_SPD*2.0);
+        spawnHit(ball.x,ball.y,p.color);
+        p.hasBall=false; p.aimTimer=0; p.aimTarget=null; p.aimAngle=0;
+        shotCooldown=20;
+      }
+      return;
+    }
+
+    const toGoalX=gx-ball.x, toGoalY=gy-ball.y;
+    const velDot=ball.vx*toGoalX+ball.vy*toGoalY;
+    const ballDist=Math.sqrt(toGoalX*toGoalX+toGoalY*toGoalY);
+    const threat=velDot>0&&ballDist<threatZoneForBot(i)&&!humanHasBall;
+    // Agresif ayrıca topa koşar (top yakınsa her zaman git)
+    const ballClose=ballDist<SZ*0.28&&i===0;
+    const reactDelay=i===0?8:i===1?22:14;
+
+    if(threat||ballClose){
+      p.reactTimer=(p.reactTimer||0)+1;
+      if(p.reactTimer>=reactDelay){
+        if(ballClose&&!threat){
+          // Agresif: topa git
+          p.tx=Math.max(AX+PLAYER_R,Math.min(AX+AW-PLAYER_R,ball.x));
+          p.ty=Math.max(AY+PLAYER_R,Math.min(AY+AH-PLAYER_R,ball.y));
+        } else {
+          const t=Math.max(0,Math.min(1,((p.x-ball.x)*(gx-ball.x)+(p.y-ball.y)*(gy-ball.y))/((gx-ball.x)**2+(gy-ball.y)**2+0.001)));
+          p.tx=Math.max(AX+PLAYER_R,Math.min(AX+AW-PLAYER_R,ball.x+t*(gx-ball.x)*0.8));
+          p.ty=Math.max(AY+PLAYER_R,Math.min(AY+AH-PLAYER_R,ball.y+t*(gy-ball.y)*0.8));
+        }
+        p.reacted=true;
+      }
+    } else {
+      p.reactTimer=Math.max(0,(p.reactTimer||0)-1);
+      if(!p.reacted){
+        const idle=idlePositionForBot(i,p,gx,gy);
+        p.tx=idle.tx; p.ty=idle.ty;
+      }
+      p.reacted=false;
+    }
+
+    const dx=p.tx-p.x,dy=p.ty-p.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d>1){ p.x+=dx/d*spd; p.y+=dy/d*spd; }
+
+    // Catch
+    const bd=Math.sqrt((ball.x-p.x)**2+(ball.y-p.y)**2);
+    const anyHas=humanHasBall||players.some(q=>q.hasBall);
+    if(bd<CATCH_R&&!anyHas&&shotCooldown<=0){
+      p.hasBall=true; p.aimTimer=0; p.aimTarget=null;
+      ball.vx=0; ball.vy=0;
+      spawnHit(p.x,p.y,p.color);
+    }
+
+    // Auto-deflect
+    if(bd<PLAYER_R+BALL_R&&!p.hasBall&&!humanHasBall){
+      const awayX=ball.x-gx, awayY=ball.y-gy;
+      const an=Math.sqrt(awayX*awayX+awayY*awayY)||1;
+      const cs=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy)||BASE_SPD;
+      ball.vx=(awayX/an)*cs*1.05+(Math.random()-.5)*BASE_SPD*0.3;
+      ball.vy=(awayY/an)*cs*1.05+(Math.random()-.5)*BASE_SPD*0.3;
+      normalizeSpeed(BASE_SPD*2.0);
+      spawnHit(ball.x,ball.y,p.color);
+    }
+  });
+}
+
+function normalizeSpeed(maxS){
+  const s=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy)||1;
+  const c=Math.min(s,maxS);
+  if(s>0){ ball.vx=ball.vx/s*c; ball.vy=ball.vy/s*c; }
+}
+
+// ══════════════════════════════════════
+// UPDATE
+// ══════════════════════════════════════
+function update(){
+  if(gameOver) return;
+  if(shotCooldown>0) shotCooldown--;
+
+  // Human movement
+  const human=players[3];
+  if(human&&human.alive){
+    if(js&&js.dist>0.05){
+      if(!humanHasBall){
+        human.x+=js.dx*HUMAN_SPD;
+        human.y+=js.dy*HUMAN_SPD;
+        human.x=Math.max(AX+PLAYER_R,Math.min(AX+AW-PLAYER_R,human.x));
+        human.y=Math.max(AY+PLAYER_R,Math.min(AY+AH-PLAYER_R,human.y));
+      } else {
+        // Drift slowly with ball
+        human.x+=js.dx*HUMAN_SPD*0.3;
+        human.y+=js.dy*HUMAN_SPD*0.3;
+        human.x=Math.max(AX+PLAYER_R,Math.min(AX+AW-PLAYER_R,human.x));
+        human.y=Math.max(AY+PLAYER_R,Math.min(AY+AH-PLAYER_R,human.y));
+      }
+    }
+    // Catch
+    if(!humanHasBall&&shotCooldown<=0&&!players.some(p=>p.hasBall)){
+      const bd=Math.sqrt((ball.x-human.x)**2+(ball.y-human.y)**2);
+      if(bd<CATCH_R){
+        humanHasBall=true;
+        ball.vx=0; ball.vy=0;
+        spawnHit(human.x,human.y,COLORS[3]);
+      }
+    }
+  }
+
+  updateAI();
+
+  // Lock ball to possessor
+  players.forEach(p=>{ if(p.hasBall){ ball.x=p.x; ball.y=p.y; ball.trail=[]; } });
+  if(humanHasBall){
+    ball.x=players[3].x+Math.cos(humanAimAngle)*BALL_OFF;
+    ball.y=players[3].y+Math.sin(humanAimAngle)*BALL_OFF;
+    ball.trail=[];
+    updateEffects();
+    return;
+  }
+  if(players.some(p=>p.hasBall)){ updateEffects(); return; }
+
+  // Free ball physics
+  ball.x+=ball.vx; ball.y+=ball.vy;
+  ball.trail.push({x:ball.x,y:ball.y}); if(ball.trail.length>18) ball.trail.shift();
+
+  function inGap(side){
+    if(!players[side].alive) return false;
+    const g=goalGap(side);
+    return g.axis==='y'?(ball.y-BALL_R<g.max&&ball.y+BALL_R>g.min):(ball.x-BALL_R<g.max&&ball.x+BALL_R>g.min);
+  }
+  let bounced=false;
+  if(ball.x-BALL_R<AX){ if(inGap(0)){goalScored(0);return;} ball.x=AX+BALL_R;ball.vx=Math.abs(ball.vx);bounced=true; }
+  if(ball.y-BALL_R<AY){ if(inGap(1)){goalScored(1);return;} ball.y=AY+BALL_R;ball.vy=Math.abs(ball.vy);bounced=true; }
+  if(ball.x+BALL_R>AX+AW){ if(inGap(2)){goalScored(2);return;} ball.x=AX+AW-BALL_R;ball.vx=-Math.abs(ball.vx);bounced=true; }
+  if(ball.y+BALL_R>AY+AH){ if(inGap(3)){goalScored(3);return;} ball.y=AY+AH-BALL_R;ball.vy=-Math.abs(ball.vy);bounced=true; }
+
+  if(bounced){
+    ball.bounces++;
+    spawnHit(ball.x,ball.y,'rgba(255,255,255,.4)');
+    if(ball.bounces===1){
+      const s=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
+      const ns=Math.min(s*1.12,BASE_SPD*1.5);
+      if(s>0){ball.vx=ball.vx/s*ns;ball.vy=ball.vy/s*ns;}
+    }
+  }
+  const s2=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
+  if(s2>0&&s2<BASE_SPD*0.7){ball.vx=ball.vx/s2*BASE_SPD*0.8;ball.vy=ball.vy/s2*BASE_SPD*0.8;}
+
+  updateEffects();
+}
+
+// ══════════════════════════════════════
+// GOAL / RESULT
+// ══════════════════════════════════════
+function resetBall(){
+  if(gameOver) return;
+  humanHasBall=false; humanAimAngle=0; shotCooldown=0;
+  players.forEach(p=>{p.hasBall=false;p.aimTimer=0;p.aimTarget=null;});
+  ball.x=CX;ball.y=CY;ball.trail=[];ball.bounces=0;
+  const a=Math.random()*Math.PI*2;
+  ball.vx=Math.cos(a)*BASE_SPD*1.1;ball.vy=Math.sin(a)*BASE_SPD*1.1;
+}
+
+function goalScored(ownerIdx){
+  if(gameOver) return;
+  const p=players[ownerIdx];
+  p.lives--;
+  spawnHit(ball.x,ball.y,COLORS[ownerIdx]);
+  const isHuman=ownerIdx===3;
+  if(p.lives<=0){
+    p.alive=false; p.lives=0;
+    showMsg(isHuman?'ELENDİN!':(p.name+' ELENDİ!'), isHuman?'#ff4444':'#ffa032',1400);
+    const alive=players.filter(q=>q.alive);
+    if(alive.length<=1||isHuman){ setTimeout(()=>endGame(alive[0]||null),1200); return; }
+    setTimeout(resetBall,1000); return;
+  }
+  showMsg(isHuman?'GOL YEDİN!':'GOL!', isHuman?'#ff4444':'#4dd97a',900);
+  setTimeout(resetBall,550);
+}
+
+function endGame(winner){
+  gameOver=true;
+  const isWin=winner&&winner.id===3;
+  document.getElementById('resIcon').textContent=isWin?'🏆':'😤';
+  document.getElementById('resTitle').textContent=isWin?'KAZANDIN!':'KAYBETTİN!';
+  document.getElementById('resSub').textContent=isWin?'Son hayatta kalan sendin.':winner?winner.name+' kazandı.':'Oyun bitti.';
+  setTimeout(()=>show('result'),1000);
+}
+
+// ══════════════════════════════════════
+// DRAW
+// ══════════════════════════════════════
+function drawArena(){
+  ctx.fillStyle='#050d07'; ctx.fillRect(0,0,VW,VH);
+  const sw=SZ*0.08;
+  for(let i=0;i*sw<SZ;i++){
+    ctx.fillStyle=i%2?'#0e1a10':'#0a150c';
+    ctx.fillRect(AOX+i*sw,AOY,sw,SZ);
+  }
+  ctx.fillStyle='rgba(5,13,7,.3)'; ctx.fillRect(AOX,AOY,SZ,SZ);
+  ctx.setLineDash([4,8]); ctx.strokeStyle='rgba(255,255,255,.04)'; ctx.lineWidth=1;
+  for(let i=1;i<3;i++){
+    ctx.beginPath();ctx.moveTo(AX+AW*i/3,AY);ctx.lineTo(AX+AW*i/3,AY+AH);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(AX,AY+AH*i/3);ctx.lineTo(AX+AW,AY+AH*i/3);ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.beginPath();ctx.arc(CX,CY,CENTER_R,0,Math.PI*2);
+  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=WALL*0.7;ctx.strokeRect(AX,AY,AW,AH);
+
+  players.forEach((p,i)=>{
+    if(!p.alive) return;
+    const gr=goalRect(i);
+    ctx.fillStyle=p.color+'18'; ctx.fillRect(gr.x,gr.y,gr.w,gr.h);
+    ctx.strokeStyle=p.color+'cc'; ctx.lineWidth=2;
+    ctx.beginPath();
+    if(gr.wall==='left'){ ctx.moveTo(gr.x+gr.w,gr.y);ctx.lineTo(gr.x,gr.y);ctx.lineTo(gr.x,gr.y+gr.h);ctx.lineTo(gr.x+gr.w,gr.y+gr.h); }
+    else if(gr.wall==='right'){ ctx.moveTo(gr.x,gr.y);ctx.lineTo(gr.x+gr.w,gr.y);ctx.lineTo(gr.x+gr.w,gr.y+gr.h);ctx.lineTo(gr.x,gr.y+gr.h); }
+    else if(gr.wall==='top'){ ctx.moveTo(gr.x,gr.y+gr.h);ctx.lineTo(gr.x,gr.y);ctx.lineTo(gr.x+gr.w,gr.y);ctx.lineTo(gr.x+gr.w,gr.y+gr.h); }
+    else { ctx.moveTo(gr.x,gr.y);ctx.lineTo(gr.x,gr.y+gr.h);ctx.lineTo(gr.x+gr.w,gr.y+gr.h);ctx.lineTo(gr.x+gr.w,gr.y); }
+    ctx.stroke();
+  });
+}
+
+function drawPlayers(){
+  players.forEach((p,i)=>{
+    if(!p.alive) return;
+    // Halo
+    ctx.beginPath();ctx.arc(p.x,p.y,HALO_R,0,Math.PI*2);
+    ctx.fillStyle=p.color+'15';ctx.fill();
+    // Body
+    const g=ctx.createRadialGradient(p.x-PLAYER_R*.3,p.y-PLAYER_R*.3,1,p.x,p.y,PLAYER_R);
+    g.addColorStop(0,p.color+'ff');g.addColorStop(1,p.color+'77');
+    ctx.beginPath();ctx.arc(p.x,p.y,PLAYER_R,0,Math.PI*2);
+    ctx.fillStyle=g;ctx.fill();
+    ctx.strokeStyle=p.color;ctx.lineWidth=1.5;ctx.stroke();
+    // Name
+    const label=i===3?'SEN':p.name;
+    const personality=['AGRESİF','PASİF','AKILLI'][i]||'';
+    ctx.font=`700 ${FONT_NAME}px Inter,Arial`;
+    ctx.textAlign='center';ctx.textBaseline='bottom';
+    ctx.fillStyle='rgba(0,0,0,.5)';
+    ctx.fillText(label,p.x+1,p.y-PLAYER_R-3);
+    ctx.fillStyle=i===3?'#4dd97a':p.color;
+    ctx.fillText(label,p.x,p.y-PLAYER_R-4);
+    // Personality hint (smaller)
+    if(i<3){
+      ctx.font=`500 ${Math.round(FONT_NAME*0.62)}px Inter,Arial`;
+      ctx.fillStyle=p.color+'99';
+      ctx.fillText(personality,p.x,p.y-PLAYER_R-4-FONT_NAME*0.9);
+    }
+    // Lives
+    for(let l=0;l<3;l++){
+      ctx.beginPath();ctx.arc(p.x-PLAYER_R*.5+l*PLAYER_R*.5,p.y+PLAYER_R+4,2.5,0,Math.PI*2);
+      ctx.fillStyle=l<p.lives?p.color:'#222';ctx.fill();
+    }
+    // Aim arrow
+    if(p.hasBall&&p.aimTarget!==null&&p.aimTarget!==undefined){
+      const prog=Math.min(1,(p.aimTimer||0)/28);
+      const r2=Math.round(prog*200),g2=Math.round((1-prog)*180+50);
+      const aCol=`rgba(${r2},${g2},40,.8)`;
+      const len=PLAYER_R*2.5+prog*PLAYER_R*4;
+      const ax=p.x+Math.cos(p.aimAngle)*len, ay=p.y+Math.sin(p.aimAngle)*len;
+      ctx.beginPath();ctx.moveTo(p.x+Math.cos(p.aimAngle)*BALL_OFF,p.y+Math.sin(p.aimAngle)*BALL_OFF);
+      ctx.lineTo(ax,ay);ctx.strokeStyle=aCol;ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.stroke();ctx.setLineDash([]);
+      const hs=6+prog*5,ang=p.aimAngle;
+      ctx.beginPath();ctx.moveTo(ax,ay);
+      ctx.lineTo(ax-hs*Math.cos(ang-.45),ay-hs*Math.sin(ang-.45));
+      ctx.lineTo(ax-hs*Math.cos(ang+.45),ay-hs*Math.sin(ang+.45));
+      ctx.closePath();ctx.fillStyle=aCol;ctx.fill();
+    }
+    ctx.textBaseline='alphabetic';
+  });
+
+  // Human aim arrow
+  if(humanHasBall&&players[3]&&players[3].alive&&js&&js.dist>0.05){
+    const h=players[3];
+    const pow=js.dist;
+    const r3=Math.round(pow*220),g3=Math.round((1-pow)*200+55);
+    const col=`rgba(${r3},${g3},50,.9)`;
+    const len=PLAYER_R*2.5+pow*PLAYER_R*5;
+    const ax=h.x+Math.cos(humanAimAngle)*len,ay=h.y+Math.sin(humanAimAngle)*len;
+    ctx.beginPath();ctx.moveTo(h.x+Math.cos(humanAimAngle)*BALL_OFF,h.y+Math.sin(humanAimAngle)*BALL_OFF);
+    ctx.lineTo(ax,ay);ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.setLineDash([6,5]);ctx.stroke();ctx.setLineDash([]);
+    const hs=8+pow*6,ang=humanAimAngle;
+    ctx.beginPath();ctx.moveTo(ax,ay);
+    ctx.lineTo(ax-hs*Math.cos(ang-.45),ay-hs*Math.sin(ang-.45));
+    ctx.lineTo(ax-hs*Math.cos(ang+.45),ay-hs*Math.sin(ang+.45));
+    ctx.closePath();ctx.fillStyle=col;ctx.fill();
+    ctx.fillStyle=col;ctx.font=`700 ${FONT_NAME}px Inter,Arial`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('ŞUT!',h.x,h.y-PLAYER_R-12);
+    ctx.textBaseline='alphabetic';
+  }
+}
+
+function drawBall(){
+  for(let i=0;i<ball.trail.length;i++){
+    const a=(i/ball.trail.length)*.35,r=BALL_R*(i/ball.trail.length)*.75;
+    if(r<.5) continue;
+    ctx.beginPath();ctx.arc(ball.trail[i].x,ball.trail[i].y,r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,200,${a})`;ctx.fill();
+  }
+  ctx.beginPath();ctx.ellipse(ball.x+2,ball.y+3,BALL_R,BALL_R*.5,0,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.fill();
+  const bg=ctx.createRadialGradient(ball.x-BALL_R*.35,ball.y-BALL_R*.4,.5,ball.x,ball.y,BALL_R);
+  bg.addColorStop(0,'#fff');bg.addColorStop(.6,'#eee');bg.addColorStop(1,'#888');
+  ctx.beginPath();ctx.arc(ball.x,ball.y,BALL_R,0,Math.PI*2);
+  ctx.fillStyle=bg;ctx.fill();ctx.strokeStyle='#444';ctx.lineWidth=.8;ctx.stroke();
+}
+
+function drawEffects(){
+  effects.forEach(e=>{
+    const a=(1-e.age/e.maxAge)*.65;
+    const r=e.r*(1+e.age*.18);
+    ctx.globalAlpha=a;
+    ctx.beginPath();ctx.arc(e.x,e.y,r,0,Math.PI*2);
+    ctx.strokeStyle=e.col;ctx.lineWidth=2;ctx.stroke();
+    ctx.globalAlpha=1;
+  });
+}
+
+// ══════════════════════════════════════
+// LOOP
+// ══════════════════════════════════════
+function loop(){
+  animId=requestAnimationFrame(loop);
+  if(!gameOver) update();
+  ctx.clearRect(0,0,VW,VH);
+  drawArena();
+  drawBall();
+  drawEffects();
+  drawPlayers();
+  drawHUD();
+  drawJoystick();
+}
+
+show('menu');
+</script>
+</body>
+</html>
